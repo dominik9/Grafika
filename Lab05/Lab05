@@ -1,0 +1,777 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<script type="text/javascript">
+var gl;
+var shaderProgram;
+var uPMatrix;
+var vertexPositionBuffer;
+var vertexColorBuffer;
+function MatrixMul(a,b) //Mnożenie macierzy
+{
+  c = [
+  0,0,0,0,
+  0,0,0,0,
+  0,0,0,0,
+  0,0,0,0
+  ]
+  for(let i=0;i<4;i++)
+  {
+    for(let j=0;j<4;j++)
+    {
+      c[i*4+j] = 0.0;
+      for(let k=0;k<4;k++)
+      {
+        c[i*4+j]+= a[i*4+k] * b[k*4+j];
+      }
+    }
+  }
+  return c;
+}
+
+function startGL() 
+{
+  alert("StartGL");
+  let canvas = document.getElementById("canvas3D"); //wyszukanie obiektu w strukturze strony 
+  gl = canvas.getContext("experimental-webgl"); //pobranie kontekstu OpenGL'u z obiektu canvas
+  gl.viewportWidth = canvas.width; //przypisanie wybranej przez nas rozdzielczości do systemu OpenGL
+  gl.viewportHeight = canvas.height;
+
+  //Kod shaderów
+  const vertextShaderSource = ` //Znak akcentu z przycisku tyldy - na lewo od przycisku 1 na klawiaturze
+    precision highp float;
+    attribute vec3 aVertexPosition; 
+    attribute vec3 aVertexColor;
+    attribute vec2 aVertexCoords;
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+    varying vec3 vColor;
+    varying vec2 vTexUV;
+    void main(void) {
+      gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0); //Dokonanie transformacji położenia punktów z przestrzeni 3D do przestrzeni obrazu (2D)
+      vColor = aVertexColor;
+      vTexUV = aVertexCoords;
+    }
+  `;
+  const fragmentShaderSource = `
+    precision highp float;
+    varying vec3 vColor;
+    varying vec2 vTexUV;
+    uniform sampler2D uSampler;
+    void main(void) {
+      //gl_FragColor = vec4(vColor,1.0); //Ustalenie stałego koloru wszystkich punktów sceny
+      gl_FragColor = texture2D(uSampler,vTexUV);//*vec4(vColor,1.0); //Odczytanie punktu tekstury i przypisanie go jako koloru danego punktu renderowaniej figury
+    }
+  `;
+  let fragmentShader = gl.createShader(gl.FRAGMENT_SHADER); //Stworzenie obiektu shadera 
+  let vertexShader   = gl.createShader(gl.VERTEX_SHADER);
+  gl.shaderSource(fragmentShader, fragmentShaderSource); //Podpięcie źródła kodu shader
+  gl.shaderSource(vertexShader, vertextShaderSource);
+  gl.compileShader(fragmentShader); //Kompilacja kodu shader
+  gl.compileShader(vertexShader);
+  if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) { //Sprawdzenie ewentualnych błedów kompilacji
+    alert(gl.getShaderInfoLog(fragmentShader));
+    return null;
+  }
+  if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+    alert(gl.getShaderInfoLog(vertexShader));
+    return null;
+  }
+
+  shaderProgram = gl.createProgram(); //Stworzenie obiektu programu 
+  gl.attachShader(shaderProgram, vertexShader); //Podpięcie obu shaderów do naszego programu wykonywanego na karcie graficznej
+  gl.attachShader(shaderProgram, fragmentShader);
+  gl.linkProgram(shaderProgram);
+  if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) alert("Could not initialise shaders");  //Sprawdzenie ewentualnych błedów
+  
+  var size_mercury = 0.1
+  var size_venus = 0.2
+  var size_earth = 0.2
+  var size_mars = 0.15
+  var size_jupiter = 0.5
+  var size_saturn = 0.4
+  var size_uranus = 0.35
+  var size_neptune = 0.35
+  
+  var distance_mercury = 3.0
+  var distance_venus = 6.0
+  var distance_earth = 9.0
+  var distance_mars = 12.0
+  var distance_jupiter = 15.0
+  var distance_saturn = 18.0
+  var distance_uranus = 21.0
+  var distance_neptune = 24.0
+  //Opis sceny 3D, położenie punktów w przestrzeni 3D w formacie X,Y,Z 
+  let vertexPosition = [
+  //SUN
+  //Top
+    -1.0, +1.0, -1.0,  -1.0, +1.0, +1.0,  +1.0, +1.0, +1.0, //3 punkty po 3 składowe - X1,Y1,Z1, X2,Y2,Z2, X3,Y3,Z3 - 1 trójkąt
+    -1.0, +1.0, -1.0,  +1.0, +1.0, +1.0,  +1.0, +1.0, -1.0,
+  //Left
+    -1.0, -1.0, +1.0,  -1.0, +1.0, +1.0,  -1.0, -1.0, -1.0,
+    -1.0, -1.0, -1.0,  -1.0, +1.0, +1.0,  -1.0, +1.0, -1.0,
+  //Right
+    +1.0, +1.0, +1.0,  +1.0, -1.0, +1.0,  +1.0, -1.0, -1.0,
+    +1.0, +1.0, +1.0,  +1.0, -1.0, -1.0,  +1.0, +1.0, -1.0,
+  //Front
+    +1.0, -1.0, +1.0,  +1.0, +1.0, +1.0,  -1.0, -1.0, +1.0,
+    -1.0, +1.0, +1.0,  -1.0, -1.0, +1.0,  +1.0, +1.0, +1.0,
+  //Back
+    +1.0, +1.0, -1.0,  +1.0, -1.0, -1.0,  -1.0, -1.0, -1.0,
+    +1.0, +1.0, -1.0,  -1.0, -1.0, -1.0,  -1.0, +1.0, -1.0,
+  //Bottom
+    -1.0, -1.0, +1.0,  -1.0, -1.0, -1.0,  +1.0, -1.0, +1.0,
+    +1.0, -1.0, +1.0,  -1.0, -1.0, -1.0,  +1.0, -1.0, -1.0,
+  //Mercury
+	//Top
+    distance_mercury-size_mercury, +size_mercury, -size_mercury,  distance_mercury-size_mercury, +size_mercury, +size_mercury,  distance_mercury+size_mercury, +size_mercury, +size_mercury, //3 punkty po 3 składowe - X1,Y1,Z1, X2,Y2,Z2, X3,Y3,Z3 - 1 trójkąt
+    distance_mercury-size_mercury, +size_mercury, -size_mercury,  distance_mercury+size_mercury, +size_mercury, +size_mercury,  distance_mercury+size_mercury, +size_mercury, -size_mercury,
+  //Left
+    distance_mercury-size_mercury, -size_mercury, +size_mercury,  distance_mercury-size_mercury, +size_mercury, +size_mercury,  distance_mercury-size_mercury, -size_mercury, -size_mercury,
+    distance_mercury-size_mercury, -size_mercury, -size_mercury,  distance_mercury-size_mercury, +size_mercury, +size_mercury,  distance_mercury-size_mercury, +size_mercury, -size_mercury,
+  //Right
+    distance_mercury+size_mercury, +size_mercury, +size_mercury,  distance_mercury+size_mercury, -size_mercury, +size_mercury,  distance_mercury+size_mercury, -size_mercury, -size_mercury,
+    distance_mercury+size_mercury, +size_mercury, +size_mercury,  distance_mercury+size_mercury, -size_mercury, -size_mercury,  distance_mercury+size_mercury, +size_mercury, -size_mercury,
+  //Front
+    distance_mercury+size_mercury, -size_mercury, +size_mercury,  distance_mercury+size_mercury, +size_mercury, +size_mercury,  distance_mercury-size_mercury, -size_mercury, +size_mercury,
+    distance_mercury-size_mercury, +size_mercury, +size_mercury,  distance_mercury-size_mercury, -size_mercury, +size_mercury,  distance_mercury+size_mercury, +size_mercury, +size_mercury,
+  //Back
+    distance_mercury+size_mercury, +size_mercury, -size_mercury,  distance_mercury+size_mercury, -size_mercury, -size_mercury,  distance_mercury-size_mercury, -size_mercury, -size_mercury,
+    distance_mercury+size_mercury, +size_mercury, -size_mercury,  distance_mercury-size_mercury, -size_mercury, -size_mercury,  distance_mercury-size_mercury, +size_mercury, -size_mercury,
+  //Bottom
+    distance_mercury-size_mercury, -size_mercury, +size_mercury,  distance_mercury-size_mercury, -size_mercury, -size_mercury,  distance_mercury+size_mercury, -size_mercury, +size_mercury,
+    distance_mercury+size_mercury, -size_mercury, +size_mercury,  distance_mercury-size_mercury, -size_mercury, -size_mercury,  distance_mercury+size_mercury, -size_mercury, -size_mercury,
+  //Venus
+  //Top
+    distance_venus-size_venus, +size_venus, -size_venus,  distance_venus-size_venus, +size_venus, +size_venus,  distance_venus+size_venus, +size_venus, +size_venus, //3 punkty po 3 składowe - X1,Y1,Z1, X2,Y2,Z2, X3,Y3,Z3 - 1 trójkąt
+    distance_venus-size_venus, +size_venus, -size_venus,  distance_venus+size_venus, +size_venus, +size_venus,  distance_venus+size_venus, +size_venus, -size_venus,
+  //Left
+    distance_venus-size_venus, -size_venus, +size_venus,  distance_venus-size_venus, +size_venus, +size_venus,  distance_venus-size_venus, -size_venus, -size_venus,
+    distance_venus-size_venus, -size_venus, -size_venus,  distance_venus-size_venus, +size_venus, +size_venus,  distance_venus-size_venus, +size_venus, -size_venus,
+  //Right
+    distance_venus+size_venus, +size_venus, +size_venus,  distance_venus+size_venus, -size_venus, +size_venus,  distance_venus+size_venus, -size_venus, -size_venus,
+    distance_venus+size_venus, +size_venus, +size_venus,  distance_venus+size_venus, -size_venus, -size_venus,  distance_venus+size_venus, +size_venus, -size_venus,
+  //Front
+    distance_venus+size_venus, -size_venus, +size_venus,  distance_venus+size_venus, +size_venus, +size_venus,  distance_venus-size_venus, -size_venus, +size_venus,
+    distance_venus-size_venus, +size_venus, +size_venus,  distance_venus-size_venus, -size_venus, +size_venus,  distance_venus+size_venus, +size_venus, +size_venus,
+  //Back
+    distance_venus+size_venus, +size_venus, -size_venus,  distance_venus+size_venus, -size_venus, -size_venus,  distance_venus-size_venus, -size_venus, -size_venus,
+    distance_venus+size_venus, +size_venus, -size_venus,  distance_venus-size_venus, -size_venus, -size_venus,  distance_venus-size_venus, +size_venus, -size_venus,
+  //Bottom
+    distance_venus-size_venus, -size_venus, +size_venus,  distance_venus-size_venus, -size_venus, -size_venus,  distance_venus+size_venus, -size_venus, +size_venus,
+    distance_venus+size_venus, -size_venus, +size_venus,  distance_venus-size_venus, -size_venus, -size_venus,  distance_venus+size_venus, -size_venus, -size_venus,
+  //earth
+  //Top
+    distance_earth-size_earth, +size_earth, -size_earth,  distance_earth-size_earth, +size_earth, +size_earth,  distance_earth+size_earth, +size_earth, +size_earth, //3 punkty po 3 składowe - X1,Y1,Z1, X2,Y2,Z2, X3,Y3,Z3 - 1 trójkąt
+    distance_earth-size_earth, +size_earth, -size_earth,  distance_earth+size_earth, +size_earth, +size_earth,  distance_earth+size_earth, +size_earth, -size_earth,
+  //Left
+    distance_earth-size_earth, -size_earth, +size_earth,  distance_earth-size_earth, +size_earth, +size_earth,  distance_earth-size_earth, -size_earth, -size_earth,
+    distance_earth-size_earth, -size_earth, -size_earth,  distance_earth-size_earth, +size_earth, +size_earth,  distance_earth-size_earth, +size_earth, -size_earth,
+  //Right
+    distance_earth+size_earth, +size_earth, +size_earth,  distance_earth+size_earth, -size_earth, +size_earth,  distance_earth+size_earth, -size_earth, -size_earth,
+    distance_earth+size_earth, +size_earth, +size_earth,  distance_earth+size_earth, -size_earth, -size_earth,  distance_earth+size_earth, +size_earth, -size_earth,
+  //Front
+    distance_earth+size_earth, -size_earth, +size_earth,  distance_earth+size_earth, +size_earth, +size_earth,  distance_earth-size_earth, -size_earth, +size_earth,
+    distance_earth-size_earth, +size_earth, +size_earth,  distance_earth-size_earth, -size_earth, +size_earth,  distance_earth+size_earth, +size_earth, +size_earth,
+  //Back
+    distance_earth+size_earth, +size_earth, -size_earth,  distance_earth+size_earth, -size_earth, -size_earth,  distance_earth-size_earth, -size_earth, -size_earth,
+    distance_earth+size_earth, +size_earth, -size_earth,  distance_earth-size_earth, -size_earth, -size_earth,  distance_earth-size_earth, +size_earth, -size_earth,
+  //Bottom
+    distance_earth-size_earth, -size_earth, +size_earth,  distance_earth-size_earth, -size_earth, -size_earth,  distance_earth+size_earth, -size_earth, +size_earth,
+    distance_earth+size_earth, -size_earth, +size_earth,  distance_earth-size_earth, -size_earth, -size_earth,  distance_earth+size_earth, -size_earth, -size_earth,
+  //Mars
+	//Top
+    distance_mars-size_mars, +size_mars, -size_mars,  distance_mars-size_mars, +size_mars, +size_mars,  distance_mars+size_mars, +size_mars, +size_mars, //3 punkty po 3 składowe - X1,Y1,Z1, X2,Y2,Z2, X3,Y3,Z3 - 1 trójkąt
+    distance_mars-size_mars, +size_mars, -size_mars,  distance_mars+size_mars, +size_mars, +size_mars,  distance_mars+size_mars, +size_mars, -size_mars,
+  //Left
+    distance_mars-size_mars, -size_mars, +size_mars,  distance_mars-size_mars, +size_mars, +size_mars,  distance_mars-size_mars, -size_mars, -size_mars,
+    distance_mars-size_mars, -size_mars, -size_mars,  distance_mars-size_mars, +size_mars, +size_mars,  distance_mars-size_mars, +size_mars, -size_mars,
+  //Right
+    distance_mars+size_mars, +size_mars, +size_mars,  distance_mars+size_mars, -size_mars, +size_mars,  distance_mars+size_mars, -size_mars, -size_mars,
+    distance_mars+size_mars, +size_mars, +size_mars,  distance_mars+size_mars, -size_mars, -size_mars,  distance_mars+size_mars, +size_mars, -size_mars,
+  //Front
+    distance_mars+size_mars, -size_mars, +size_mars,  distance_mars+size_mars, +size_mars, +size_mars,  distance_mars-size_mars, -size_mars, +size_mars,
+    distance_mars-size_mars, +size_mars, +size_mars,  distance_mars-size_mars, -size_mars, +size_mars,  distance_mars+size_mars, +size_mars, +size_mars,
+  //Back
+    distance_mars+size_mars, +size_mars, -size_mars,  distance_mars+size_mars, -size_mars, -size_mars,  distance_mars-size_mars, -size_mars, -size_mars,
+    distance_mars+size_mars, +size_mars, -size_mars,  distance_mars-size_mars, -size_mars, -size_mars,  distance_mars-size_mars, +size_mars, -size_mars,
+  //Bottom
+    distance_mars-size_mars, -size_mars, +size_mars,  distance_mars-size_mars, -size_mars, -size_mars,  distance_mars+size_mars, -size_mars, +size_mars,
+    distance_mars+size_mars, -size_mars, +size_mars,  distance_mars-size_mars, -size_mars, -size_mars,  distance_mars+size_mars, -size_mars, -size_mars,
+  //jupiter
+  //Top
+    distance_jupiter-size_jupiter, +size_jupiter, -size_jupiter,  distance_jupiter-size_jupiter, +size_jupiter, +size_jupiter,  distance_jupiter+size_jupiter, +size_jupiter, +size_jupiter, //3 punkty po 3 składowe - X1,Y1,Z1, X2,Y2,Z2, X3,Y3,Z3 - 1 trójkąt
+    distance_jupiter-size_jupiter, +size_jupiter, -size_jupiter,  distance_jupiter+size_jupiter, +size_jupiter, +size_jupiter,  distance_jupiter+size_jupiter, +size_jupiter, -size_jupiter,
+  //Left
+    distance_jupiter-size_jupiter, -size_jupiter, +size_jupiter,  distance_jupiter-size_jupiter, +size_jupiter, +size_jupiter,  distance_jupiter-size_jupiter, -size_jupiter, -size_jupiter,
+    distance_jupiter-size_jupiter, -size_jupiter, -size_jupiter,  distance_jupiter-size_jupiter, +size_jupiter, +size_jupiter,  distance_jupiter-size_jupiter, +size_jupiter, -size_jupiter,
+  //Right
+    distance_jupiter+size_jupiter, +size_jupiter, +size_jupiter,  distance_jupiter+size_jupiter, -size_jupiter, +size_jupiter,  distance_jupiter+size_jupiter, -size_jupiter, -size_jupiter,
+    distance_jupiter+size_jupiter, +size_jupiter, +size_jupiter,  distance_jupiter+size_jupiter, -size_jupiter, -size_jupiter,  distance_jupiter+size_jupiter, +size_jupiter, -size_jupiter,
+  //Front
+    distance_jupiter+size_jupiter, -size_jupiter, +size_jupiter,  distance_jupiter+size_jupiter, +size_jupiter, +size_jupiter,  distance_jupiter-size_jupiter, -size_jupiter, +size_jupiter,
+    distance_jupiter-size_jupiter, +size_jupiter, +size_jupiter,  distance_jupiter-size_jupiter, -size_jupiter, +size_jupiter,  distance_jupiter+size_jupiter, +size_jupiter, +size_jupiter,
+  //Back
+    distance_jupiter+size_jupiter, +size_jupiter, -size_jupiter,  distance_jupiter+size_jupiter, -size_jupiter, -size_jupiter,  distance_jupiter-size_jupiter, -size_jupiter, -size_jupiter,
+    distance_jupiter+size_jupiter, +size_jupiter, -size_jupiter,  distance_jupiter-size_jupiter, -size_jupiter, -size_jupiter,  distance_jupiter-size_jupiter, +size_jupiter, -size_jupiter,
+  //Bottom
+    distance_jupiter-size_jupiter, -size_jupiter, +size_jupiter,  distance_jupiter-size_jupiter, -size_jupiter, -size_jupiter,  distance_jupiter+size_jupiter, -size_jupiter, +size_jupiter,
+    distance_jupiter+size_jupiter, -size_jupiter, +size_jupiter,  distance_jupiter-size_jupiter, -size_jupiter, -size_jupiter,  distance_jupiter+size_jupiter, -size_jupiter, -size_jupiter,
+  //saturn
+	//Top
+    distance_saturn-size_saturn, +size_saturn, -size_saturn,  distance_saturn-size_saturn, +size_saturn, +size_saturn,  distance_saturn+size_saturn, +size_saturn, +size_saturn, //3 punkty po 3 składowe - X1,Y1,Z1, X2,Y2,Z2, X3,Y3,Z3 - 1 trójkąt
+    distance_saturn-size_saturn, +size_saturn, -size_saturn,  distance_saturn+size_saturn, +size_saturn, +size_saturn,  distance_saturn+size_saturn, +size_saturn, -size_saturn,
+  //Left
+    distance_saturn-size_saturn, -size_saturn, +size_saturn,  distance_saturn-size_saturn, +size_saturn, +size_saturn,  distance_saturn-size_saturn, -size_saturn, -size_saturn,
+    distance_saturn-size_saturn, -size_saturn, -size_saturn,  distance_saturn-size_saturn, +size_saturn, +size_saturn,  distance_saturn-size_saturn, +size_saturn, -size_saturn,
+  //Right
+    distance_saturn+size_saturn, +size_saturn, +size_saturn,  distance_saturn+size_saturn, -size_saturn, +size_saturn,  distance_saturn+size_saturn, -size_saturn, -size_saturn,
+    distance_saturn+size_saturn, +size_saturn, +size_saturn,  distance_saturn+size_saturn, -size_saturn, -size_saturn,  distance_saturn+size_saturn, +size_saturn, -size_saturn,
+  //Front
+    distance_saturn+size_saturn, -size_saturn, +size_saturn,  distance_saturn+size_saturn, +size_saturn, +size_saturn,  distance_saturn-size_saturn, -size_saturn, +size_saturn,
+    distance_saturn-size_saturn, +size_saturn, +size_saturn,  distance_saturn-size_saturn, -size_saturn, +size_saturn,  distance_saturn+size_saturn, +size_saturn, +size_saturn,
+  //Back
+    distance_saturn+size_saturn, +size_saturn, -size_saturn,  distance_saturn+size_saturn, -size_saturn, -size_saturn,  distance_saturn-size_saturn, -size_saturn, -size_saturn,
+    distance_saturn+size_saturn, +size_saturn, -size_saturn,  distance_saturn-size_saturn, -size_saturn, -size_saturn,  distance_saturn-size_saturn, +size_saturn, -size_saturn,
+  //Bottom
+    distance_saturn-size_saturn, -size_saturn, +size_saturn,  distance_saturn-size_saturn, -size_saturn, -size_saturn,  distance_saturn+size_saturn, -size_saturn, +size_saturn,
+    distance_saturn+size_saturn, -size_saturn, +size_saturn,  distance_saturn-size_saturn, -size_saturn, -size_saturn,  distance_saturn+size_saturn, -size_saturn, -size_saturn,
+  //uranus
+  //Top
+    distance_uranus-size_uranus, +size_uranus, -size_uranus,  distance_uranus-size_uranus, +size_uranus, +size_uranus,  distance_uranus+size_uranus, +size_uranus, +size_uranus, //3 punkty po 3 składowe - X1,Y1,Z1, X2,Y2,Z2, X3,Y3,Z3 - 1 trójkąt
+    distance_uranus-size_uranus, +size_uranus, -size_uranus,  distance_uranus+size_uranus, +size_uranus, +size_uranus,  distance_uranus+size_uranus, +size_uranus, -size_uranus,
+  //Left
+    distance_uranus-size_uranus, -size_uranus, +size_uranus,  distance_uranus-size_uranus, +size_uranus, +size_uranus,  distance_uranus-size_uranus, -size_uranus, -size_uranus,
+    distance_uranus-size_uranus, -size_uranus, -size_uranus,  distance_uranus-size_uranus, +size_uranus, +size_uranus,  distance_uranus-size_uranus, +size_uranus, -size_uranus,
+  //Right
+    distance_uranus+size_uranus, +size_uranus, +size_uranus,  distance_uranus+size_uranus, -size_uranus, +size_uranus,  distance_uranus+size_uranus, -size_uranus, -size_uranus,
+    distance_uranus+size_uranus, +size_uranus, +size_uranus,  distance_uranus+size_uranus, -size_uranus, -size_uranus,  distance_uranus+size_uranus, +size_uranus, -size_uranus,
+  //Front
+    distance_uranus+size_uranus, -size_uranus, +size_uranus,  distance_uranus+size_uranus, +size_uranus, +size_uranus,  distance_uranus-size_uranus, -size_uranus, +size_uranus,
+    distance_uranus-size_uranus, +size_uranus, +size_uranus,  distance_uranus-size_uranus, -size_uranus, +size_uranus,  distance_uranus+size_uranus, +size_uranus, +size_uranus,
+  //Back
+    distance_uranus+size_uranus, +size_uranus, -size_uranus,  distance_uranus+size_uranus, -size_uranus, -size_uranus,  distance_uranus-size_uranus, -size_uranus, -size_uranus,
+    distance_uranus+size_uranus, +size_uranus, -size_uranus,  distance_uranus-size_uranus, -size_uranus, -size_uranus,  distance_uranus-size_uranus, +size_uranus, -size_uranus,
+  //Bottom
+    distance_uranus-size_uranus, -size_uranus, +size_uranus,  distance_uranus-size_uranus, -size_uranus, -size_uranus,  distance_uranus+size_uranus, -size_uranus, +size_uranus,
+    distance_uranus+size_uranus, -size_uranus, +size_uranus,  distance_uranus-size_uranus, -size_uranus, -size_uranus,  distance_uranus+size_uranus, -size_uranus, -size_uranus,
+  //neptune
+  //Top
+    distance_neptune-size_neptune, +size_neptune, -size_neptune,  distance_neptune-size_neptune, +size_neptune, +size_neptune,  distance_neptune+size_neptune, +size_neptune, +size_neptune, //3 punkty po 3 składowe - X1,Y1,Z1, X2,Y2,Z2, X3,Y3,Z3 - 1 trójkąt
+    distance_neptune-size_neptune, +size_neptune, -size_neptune,  distance_neptune+size_neptune, +size_neptune, +size_neptune,  distance_neptune+size_neptune, +size_neptune, -size_neptune,
+  //Left
+    distance_neptune-size_neptune, -size_neptune, +size_neptune,  distance_neptune-size_neptune, +size_neptune, +size_neptune,  distance_neptune-size_neptune, -size_neptune, -size_neptune,
+    distance_neptune-size_neptune, -size_neptune, -size_neptune,  distance_neptune-size_neptune, +size_neptune, +size_neptune,  distance_neptune-size_neptune, +size_neptune, -size_neptune,
+  //Right
+    distance_neptune+size_neptune, +size_neptune, +size_neptune,  distance_neptune+size_neptune, -size_neptune, +size_neptune,  distance_neptune+size_neptune, -size_neptune, -size_neptune,
+    distance_neptune+size_neptune, +size_neptune, +size_neptune,  distance_neptune+size_neptune, -size_neptune, -size_neptune,  distance_neptune+size_neptune, +size_neptune, -size_neptune,
+  //Front
+    distance_neptune+size_neptune, -size_neptune, +size_neptune,  distance_neptune+size_neptune, +size_neptune, +size_neptune,  distance_neptune-size_neptune, -size_neptune, +size_neptune,
+    distance_neptune-size_neptune, +size_neptune, +size_neptune,  distance_neptune-size_neptune, -size_neptune, +size_neptune,  distance_neptune+size_neptune, +size_neptune, +size_neptune,
+  //Back
+    distance_neptune+size_neptune, +size_neptune, -size_neptune,  distance_neptune+size_neptune, -size_neptune, -size_neptune,  distance_neptune-size_neptune, -size_neptune, -size_neptune,
+    distance_neptune+size_neptune, +size_neptune, -size_neptune,  distance_neptune-size_neptune, -size_neptune, -size_neptune,  distance_neptune-size_neptune, +size_neptune, -size_neptune,
+  //Bottom
+    distance_neptune-size_neptune, -size_neptune, +size_neptune,  distance_neptune-size_neptune, -size_neptune, -size_neptune,  distance_neptune+size_neptune, -size_neptune, +size_neptune,
+    distance_neptune+size_neptune, -size_neptune, +size_neptune,  distance_neptune-size_neptune, -size_neptune, -size_neptune,  distance_neptune+size_neptune, -size_neptune, -size_neptune,
+  
+  ]
+
+  vertexPositionBuffer = gl.createBuffer(); //Stworzenie tablicy w pamieci karty graficznej
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexPositionBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexPosition), gl.STATIC_DRAW);
+  vertexPositionBuffer.itemSize = 3; //zdefiniowanie liczby współrzednych per wierzchołek
+  vertexPositionBuffer.numItems = 12*9; //Zdefinoiowanie liczby punktów w naszym buforze
+
+  //Opis sceny 3D, kolor każdego z wierzchołków
+  let vertexColor = [
+  //SUN
+  //Top
+    1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0, //3 punkty po 3 składowe - R1,G1,B1, R2,G2,B2, R3,G3,B3 - 1 trójkąt
+    1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0,
+  //Left
+    0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+    0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+  //Right
+    0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+    0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+  //Front
+    1.0, 1.0, 0.0,  1.0, 1.0, 0.0,  1.0, 1.0, 0.0,
+    1.0, 1.0, 0.0,  1.0, 1.0, 0.0,  1.0, 1.0, 0.0,
+  //Back
+    1.0, 0.0, 1.0,  1.0, 0.0, 1.0,  1.0, 0.0, 1.0,
+    1.0, 0.0, 1.0,  1.0, 0.0, 1.0,  1.0, 0.0, 1.0,
+  //Bottom
+    0.0, 1.0, 1.0,  0.0, 1.0, 1.0,  0.0, 1.0, 1.0,
+    0.0, 1.0, 1.0,  0.0, 1.0, 1.0,  0.0, 1.0, 1.0,
+  //Mercury
+  //Top
+    1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0, //3 punkty po 3 składowe - R1,G1,B1, R2,G2,B2, R3,G3,B3 - 1 trójkąt
+    1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0,
+  //Left
+    0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+    0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+  //Right
+    0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+    0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+  //Front
+    1.0, 1.0, 0.0,  1.0, 1.0, 0.0,  1.0, 1.0, 0.0,
+    1.0, 1.0, 0.0,  1.0, 1.0, 0.0,  1.0, 1.0, 0.0,
+  //Back
+    1.0, 0.0, 1.0,  1.0, 0.0, 1.0,  1.0, 0.0, 1.0,
+    1.0, 0.0, 1.0,  1.0, 0.0, 1.0,  1.0, 0.0, 1.0,
+  //Bottom
+    0.0, 1.0, 1.0,  0.0, 1.0, 1.0,  0.0, 1.0, 1.0,
+    0.0, 1.0, 1.0,  0.0, 1.0, 1.0,  0.0, 1.0, 1.0,
+	//Venus
+	//Top
+    1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0, //3 punkty po 3 składowe - R1,G1,B1, R2,G2,B2, R3,G3,B3 - 1 trójkąt
+    1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0,
+  //Left
+    0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+    0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+  //Right
+    0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+    0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+  //Front
+    1.0, 1.0, 0.0,  1.0, 1.0, 0.0,  1.0, 1.0, 0.0,
+    1.0, 1.0, 0.0,  1.0, 1.0, 0.0,  1.0, 1.0, 0.0,
+  //Back
+    1.0, 0.0, 1.0,  1.0, 0.0, 1.0,  1.0, 0.0, 1.0,
+    1.0, 0.0, 1.0,  1.0, 0.0, 1.0,  1.0, 0.0, 1.0,
+  //Bottom
+    0.0, 1.0, 1.0,  0.0, 1.0, 1.0,  0.0, 1.0, 1.0,
+    0.0, 1.0, 1.0,  0.0, 1.0, 1.0,  0.0, 1.0, 1.0,
+	//earth
+	//Top
+    1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0, //3 punkty po 3 składowe - R1,G1,B1, R2,G2,B2, R3,G3,B3 - 1 trójkąt
+    1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0,
+  //Left
+    0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+    0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+  //Right
+    0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+    0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+  //Front
+    1.0, 1.0, 0.0,  1.0, 1.0, 0.0,  1.0, 1.0, 0.0,
+    1.0, 1.0, 0.0,  1.0, 1.0, 0.0,  1.0, 1.0, 0.0,
+  //Back
+    1.0, 0.0, 1.0,  1.0, 0.0, 1.0,  1.0, 0.0, 1.0,
+    1.0, 0.0, 1.0,  1.0, 0.0, 1.0,  1.0, 0.0, 1.0,
+  //Bottom
+    0.0, 1.0, 1.0,  0.0, 1.0, 1.0,  0.0, 1.0, 1.0,
+    0.0, 1.0, 1.0,  0.0, 1.0, 1.0,  0.0, 1.0, 1.0,
+	//mars
+	//Top
+    1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0, //3 punkty po 3 składowe - R1,G1,B1, R2,G2,B2, R3,G3,B3 - 1 trójkąt
+    1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0,
+  //Left
+    0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+    0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+  //Right
+    0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+    0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+  //Front
+    1.0, 1.0, 0.0,  1.0, 1.0, 0.0,  1.0, 1.0, 0.0,
+    1.0, 1.0, 0.0,  1.0, 1.0, 0.0,  1.0, 1.0, 0.0,
+  //Back
+    1.0, 0.0, 1.0,  1.0, 0.0, 1.0,  1.0, 0.0, 1.0,
+    1.0, 0.0, 1.0,  1.0, 0.0, 1.0,  1.0, 0.0, 1.0,
+  //Bottom
+    0.0, 1.0, 1.0,  0.0, 1.0, 1.0,  0.0, 1.0, 1.0,
+    0.0, 1.0, 1.0,  0.0, 1.0, 1.0,  0.0, 1.0, 1.0,
+	//jupiter
+	//Top
+    1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0, //3 punkty po 3 składowe - R1,G1,B1, R2,G2,B2, R3,G3,B3 - 1 trójkąt
+    1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0,
+  //Left
+    0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+    0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+  //Right
+    0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+    0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+  //Front
+    1.0, 1.0, 0.0,  1.0, 1.0, 0.0,  1.0, 1.0, 0.0,
+    1.0, 1.0, 0.0,  1.0, 1.0, 0.0,  1.0, 1.0, 0.0,
+  //Back
+    1.0, 0.0, 1.0,  1.0, 0.0, 1.0,  1.0, 0.0, 1.0,
+    1.0, 0.0, 1.0,  1.0, 0.0, 1.0,  1.0, 0.0, 1.0,
+  //Bottom
+    0.0, 1.0, 1.0,  0.0, 1.0, 1.0,  0.0, 1.0, 1.0,
+    0.0, 1.0, 1.0,  0.0, 1.0, 1.0,  0.0, 1.0, 1.0,
+	//saturn
+	//Top
+    1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0, //3 punkty po 3 składowe - R1,G1,B1, R2,G2,B2, R3,G3,B3 - 1 trójkąt
+    1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0,
+  //Left
+    0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+    0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+  //Right
+    0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+    0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+  //Front
+    1.0, 1.0, 0.0,  1.0, 1.0, 0.0,  1.0, 1.0, 0.0,
+    1.0, 1.0, 0.0,  1.0, 1.0, 0.0,  1.0, 1.0, 0.0,
+  //Back
+    1.0, 0.0, 1.0,  1.0, 0.0, 1.0,  1.0, 0.0, 1.0,
+    1.0, 0.0, 1.0,  1.0, 0.0, 1.0,  1.0, 0.0, 1.0,
+  //Bottom
+    0.0, 1.0, 1.0,  0.0, 1.0, 1.0,  0.0, 1.0, 1.0,
+    0.0, 1.0, 1.0,  0.0, 1.0, 1.0,  0.0, 1.0, 1.0,
+	//uranus
+	//Top
+    1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0, //3 punkty po 3 składowe - R1,G1,B1, R2,G2,B2, R3,G3,B3 - 1 trójkąt
+    1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0,
+  //Left
+    0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+    0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+  //Right
+    0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+    0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+  //Front
+    1.0, 1.0, 0.0,  1.0, 1.0, 0.0,  1.0, 1.0, 0.0,
+    1.0, 1.0, 0.0,  1.0, 1.0, 0.0,  1.0, 1.0, 0.0,
+  //Back
+    1.0, 0.0, 1.0,  1.0, 0.0, 1.0,  1.0, 0.0, 1.0,
+    1.0, 0.0, 1.0,  1.0, 0.0, 1.0,  1.0, 0.0, 1.0,
+  //Bottom
+    0.0, 1.0, 1.0,  0.0, 1.0, 1.0,  0.0, 1.0, 1.0,
+    0.0, 1.0, 1.0,  0.0, 1.0, 1.0,  0.0, 1.0, 1.0,
+	//neptune
+	//Top
+    1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0, //3 punkty po 3 składowe - R1,G1,B1, R2,G2,B2, R3,G3,B3 - 1 trójkąt
+    1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0,
+  //Left
+    0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+    0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+  //Right
+    0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+    0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+  //Front
+    1.0, 1.0, 0.0,  1.0, 1.0, 0.0,  1.0, 1.0, 0.0,
+    1.0, 1.0, 0.0,  1.0, 1.0, 0.0,  1.0, 1.0, 0.0,
+  //Back
+    1.0, 0.0, 1.0,  1.0, 0.0, 1.0,  1.0, 0.0, 1.0,
+    1.0, 0.0, 1.0,  1.0, 0.0, 1.0,  1.0, 0.0, 1.0,
+  //Bottom
+    0.0, 1.0, 1.0,  0.0, 1.0, 1.0,  0.0, 1.0, 1.0,
+    0.0, 1.0, 1.0,  0.0, 1.0, 1.0,  0.0, 1.0, 1.0,
+  ]
+
+  vertexColorBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexColorBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexColor), gl.STATIC_DRAW);
+  vertexColorBuffer.itemSize = 3;
+  vertexColorBuffer.numItems = 12*9;
+  let vertexCoords = [
+  //sun
+  //Top
+    0.25, 0.533,  0.25, 0.5,  0.5, 0.5,//3 punkty po 2 składowe - U1,V1, U2,V2, U3,V3 - 1 trójkąt//ok
+    0.25, 0.533,  0.5, 0.5,  0.5, 0.533,//ok
+  //Left
+    0.0, 0.533,  0.25, 0.533,  0.0, 0.566,//ok
+    0.0, 0.566,  0.25, 0.533,  0.25, 0.566,//ok
+  //Right
+    0.75, 0.533,  0.5, 0.533,  0.5, 0.566,
+    0.75, 0.533,  0.5, 0.566,  0.75, 0.566,
+  //Front
+    0.5, 0.566,  0.5, 0.533,  0.25, 0.566,
+    0.25, 0.533,  0.25, 0.566,  0.5, 0.533,
+  //Back
+    1.0, 0.533,  0.75, 0.533,  0.75, 0.566,
+    1.0, 0.533,  0.75, 0.566,  1.0, 0.566,
+  //Bottom
+   0.25, 0.566,  0.25, 0.599,  0.5, 0.566,//3 punkty po 2 składowe - U1,V1, U2,V2, U3,V3 - 1 trójkąt//ok
+    0.5, 0.566,  0.25, 0.599,  0.5, 0.599,
+  //mercury
+  //Top
+    0.25, 0.633,  0.25, 0.6,  0.5, 0.6,//3 punkty po 2 składowe - U1,V1, U2,V2, U3,V3 - 1 trójkąt//ok
+    0.25, 0.633,  0.5, 0.6,  0.5, 0.633,//ok
+  //Left
+    0.0, 0.633,  0.25, 0.633,  0.0, 0.666,//ok
+    0.0, 0.666,  0.25, 0.633,  0.25, 0.666,//ok
+  //Right
+    0.75, 0.633,  0.5, 0.633,  0.5, 0.666,
+    0.75, 0.633,  0.5, 0.666,  0.75, 0.666,
+  //Front
+    0.5, 0.666,  0.5, 0.633,  0.25, 0.666,
+    0.25, 0.633,  0.25, 0.666,  0.5, 0.633,
+  //Back
+    1.0, 0.633,  0.75, 0.633,  0.75, 0.666,
+    1.0, 0.633,  0.75, 0.666,  1.0, 0.666,
+  //Bottom
+   0.25, 0.666,  0.25, 0.699,  0.5, 0.666,//3 punkty po 2 składowe - U1,V1, U2,V2, U3,V3 - 1 trójkąt//ok
+    0.5, 0.666,  0.25, 0.699,  0.5, 0.699,
+	//Venus
+	//Top
+    0.25, 0.833,  0.25, 0.8,  0.5, 0.8,//3 punkty po 2 składowe - U1,V1, U2,V2, U3,V3 - 1 trójkąt//ok
+    0.25, 0.833,  0.5, 0.8,  0.5, 0.833,//ok
+  //Left
+    0.0, 0.833,  0.25, 0.833,  0.0, 0.866,//ok
+    0.0, 0.866,  0.25, 0.833,  0.25, 0.866,//ok
+  //Right
+    0.75, 0.833,  0.5, 0.833,  0.5, 0.866,
+    0.75, 0.833,  0.5, 0.866,  0.75, 0.866,
+  //Front
+    0.5, 0.866,  0.5, 0.833,  0.25, 0.866,
+    0.25, 0.833,  0.25, 0.866,  0.5, 0.833,
+  //Back
+    1.0, 0.833,  0.75, 0.833,  0.75, 0.866,
+    1.0, 0.833,  0.75, 0.866,  1.0, 0.866,
+  //Bottom
+   0.25, 0.866,  0.25, 0.899,  0.5, 0.866,//3 punkty po 2 składowe - U1,V1, U2,V2, U3,V3 - 1 trójkąt//ok
+    0.5, 0.866,  0.25, 0.899,  0.5, 0.899,
+	//earth
+	//Top
+    0.25, 0.333,  0.25, 0.3,  0.5, 0.3,//3 punkty po 2 składowe - U1,V1, U2,V2, U3,V3 - 1 trójkąt//ok
+    0.25, 0.333,  0.5, 0.3,  0.5, 0.333,//ok
+  //Left
+    0.0, 0.333,  0.25, 0.333,  0.0, 0.366,//ok
+    0.0, 0.366,  0.25, 0.333,  0.25, 0.366,//ok
+  //Right
+    0.75, 0.333,  0.5, 0.333,  0.5, 0.366,
+    0.75, 0.333,  0.5, 0.366,  0.75, 0.366,
+  //Front
+    0.5, 0.366,  0.5, 0.333,  0.25, 0.366,
+    0.25, 0.333,  0.25, 0.366,  0.5, 0.333,
+  //Back
+    1.0, 0.333,  0.75, 0.333,  0.75, 0.366,
+    1.0, 0.333,  0.75, 0.366,  1.0, 0.366,
+  //Bottom
+   0.25, 0.366,  0.25, 0.399,  0.5, 0.366,//3 punkty po 2 składowe - U1,V1, U2,V2, U3,V3 - 1 trójkąt//ok
+    0.5, 0.366,  0.25, 0.399,  0.5, 0.399,
+	//mars
+	//Top
+    0.25, 0.933,  0.25, 0.9,  0.5, 0.9,//3 punkty po 2 składowe - U1,V1, U2,V2, U3,V3 - 1 trójkąt//ok
+    0.25, 0.933,  0.5, 0.9,  0.5, 0.933,//ok
+  //Left
+    0.0, 0.933,  0.25, 0.933,  0.0, 0.966,//ok
+    0.0, 0.966,  0.25, 0.933,  0.25, 0.966,//ok
+  //Right
+    0.75, 0.933,  0.5, 0.933,  0.5, 0.966,
+    0.75, 0.933,  0.5, 0.966,  0.75, 0.966,
+  //Front
+    0.5, 0.966,  0.5, 0.933,  0.25, 0.966,
+    0.25, 0.933,  0.25, 0.966,  0.5, 0.933,
+  //Back
+    1.0, 0.933,  0.75, 0.933,  0.75, 0.966,
+    1.0, 0.933,  0.75, 0.966,  1.0, 0.966,
+  //Bottom
+   0.25, 0.966,  0.25, 0.999,  0.5, 0.966,//3 punkty po 2 składowe - U1,V1, U2,V2, U3,V3 - 1 trójkąt//ok
+    0.5, 0.966,  0.25, 0.999,  0.5, 0.999,
+	//jupiter
+	//Top
+    0.25, 0.433,  0.25, 0.4,  0.5, 0.4,//3 punkty po 2 składowe - U1,V1, U2,V2, U3,V3 - 1 trójkąt//ok
+    0.25, 0.433,  0.5, 0.4,  0.5, 0.433,//ok
+  //Left
+    0.0, 0.433,  0.25, 0.433,  0.0, 0.466,//ok
+    0.0, 0.466,  0.25, 0.433,  0.25, 0.466,//ok
+  //Right
+    0.75, 0.433,  0.5, 0.433,  0.5, 0.466,
+    0.75, 0.433,  0.5, 0.466,  0.75, 0.466,
+  //Front
+    0.5, 0.466,  0.5, 0.433,  0.25, 0.466,
+    0.25, 0.433,  0.25, 0.466,  0.5, 0.433,
+  //Back
+    1.0, 0.433,  0.75, 0.433,  0.75, 0.466,
+    1.0, 0.433,  0.75, 0.466,  1.0, 0.466,
+  //Bottom
+   0.25, 0.466,  0.25, 0.499,  0.5, 0.466,//3 punkty po 2 składowe - U1,V1, U2,V2, U3,V3 - 1 trójkąt//ok
+    0.5, 0.466,  0.25, 0.499,  0.5, 0.499,
+	//saturn
+	//Top
+    0.25, 0.133,  0.25, 0.1,  0.5, 0.1,//3 punkty po 2 składowe - U1,V1, U2,V2, U3,V3 - 1 trójkąt//ok
+    0.25, 0.133,  0.5, 0.1,  0.5, 0.133,//ok
+  //Left
+    0.0, 0.133,  0.25, 0.133,  0.0, 0.166,//ok
+    0.0, 0.166,  0.25, 0.133,  0.25, 0.166,//ok
+  //Right
+    0.75, 0.133,  0.5, 0.133,  0.5, 0.166,
+    0.75, 0.133,  0.5, 0.166,  0.75, 0.166,
+  //Front
+    0.5, 0.166,  0.5, 0.133,  0.25, 0.166,
+    0.25, 0.133,  0.25, 0.166,  0.5, 0.133,
+  //Back
+    1.0, 0.133,  0.75, 0.133,  0.75, 0.166,
+    1.0, 0.133,  0.75, 0.166,  1.0, 0.166,
+  //Bottom
+   0.25, 0.166,  0.25, 0.199,  0.5, 0.166,//3 punkty po 2 składowe - U1,V1, U2,V2, U3,V3 - 1 trójkąt//ok
+    0.5, 0.166,  0.25, 0.199,  0.5, 0.199,
+	//uranus
+	//Top
+    0.25, 0.033,  0.25, 0.0,  0.5, 0.0,//3 punkty po 2 składowe - U1,V1, U2,V2, U3,V3 - 1 trójkąt//ok
+    0.25, 0.033,  0.5, 0.0,  0.5, 0.033,//ok
+  //Left
+    0.0, 0.033,  0.25, 0.033,  0.0, 0.066,//ok
+    0.0, 0.066,  0.25, 0.033,  0.25, 0.066,//ok
+  //Right
+    0.75, 0.033,  0.5, 0.033,  0.5, 0.066,
+    0.75, 0.033,  0.5, 0.066,  0.75, 0.066,
+  //Front
+    0.5, 0.066,  0.5, 0.033,  0.25, 0.066,
+    0.25, 0.033,  0.25, 0.066,  0.5, 0.033,
+  //Back
+    1.0, 0.033,  0.75, 0.033,  0.75, 0.066,
+    1.0, 0.033,  0.75, 0.066,  1.0, 0.066,
+  //Bottom
+   0.25, 0.066,  0.25, 0.099,  0.5, 0.066,//3 punkty po 2 składowe - U1,V1, U2,V2, U3,V3 - 1 trójkąt//ok
+    0.5, 0.066,  0.25, 0.099,  0.5, 0.099,
+  //neptune
+  //Top
+    0.25, 0.233,  0.25, 0.2,  0.5, 0.2,//3 punkty po 2 składowe - U1,V1, U2,V2, U3,V3 - 1 trójkąt//ok
+    0.25, 0.233,  0.5, 0.2,  0.5, 0.233,//ok
+  //Left
+    0.0, 0.233,  0.25, 0.233,  0.0, 0.266,//ok
+    0.0, 0.266,  0.25, 0.233,  0.25, 0.266,//ok
+  //Right
+    0.75, 0.233,  0.5, 0.233,  0.5, 0.266,
+    0.75, 0.233,  0.5, 0.266,  0.75, 0.266,
+  //Front
+    0.5, 0.266,  0.5, 0.233,  0.25, 0.266,
+    0.25, 0.233,  0.25, 0.266,  0.5, 0.233,
+  //Back
+    1.0, 0.233,  0.75, 0.233,  0.75, 0.266,
+    1.0, 0.233,  0.75, 0.266,  1.0, 0.266,
+  //Bottom
+   0.25, 0.266,  0.25, 0.299,  0.5, 0.266,//3 punkty po 2 składowe - U1,V1, U2,V2, U3,V3 - 1 trójkąt//ok
+    0.5, 0.266,  0.25, 0.299,  0.5, 0.299,
+  ];
+
+  vertexCoordsBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexCoordsBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexCoords), gl.STATIC_DRAW);
+  vertexCoordsBuffer.itemSize = 2;
+  vertexCoordsBuffer.numItems = 12*9;
+
+  textureBuffer = gl.createTexture();
+  var textureImg = new Image();
+  textureImg.onload = function() { //Wykonanie kodu automatycznie po załadowaniu obrazka
+    gl.bindTexture(gl.TEXTURE_2D, textureBuffer);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, textureImg); //Faktyczne załadowanie danych obrazu do pamieci karty graficznej
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); //Ustawienie parametrów próbkowania tekstury
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  }
+  textureImg.src="solarsystem.jpg"; //Nazwa obrazka
+
+  //Macierze opisujące położenie wirtualnej kamery w przestrzenie 3D
+  let aspect = gl.viewportWidth/gl.viewportHeight;
+  let fov = 45.0 * Math.PI / 180.0; //Określenie pola widzenia kamery
+  let zFar = 100.0; //Ustalenie zakresów renderowania sceny 3D (od obiektu najbliższego zNear do najdalszego zFar)
+  let zNear = 0.1;
+  uPMatrix = [
+   1.0/(aspect*Math.tan(fov/2)),0                           ,0                         ,0                            ,
+   0                         ,1.0/(Math.tan(fov/2))         ,0                         ,0                            ,
+   0                         ,0                           ,-(zFar+zNear)/(zFar-zNear)  , -1,
+   0                         ,0                           ,-(2*zFar*zNear)/(zFar-zNear) ,0.0,
+  ];
+
+  Tick();
+} 
+
+//let angle = 45.0; //Macierz transformacji świata - określenie położenia kamery
+var angleZ = 0.0;
+var angleY = 0.0;
+var angleX = 0.0;
+var tz = -10.0;
+var tx = 0.0;
+
+function Tick()
+{  
+  let uMVMatrix = [
+  1,0,0,0, //Macierz jednostkowa
+  0,1,0,0,
+  0,0,1,0,
+  0,0,0,1
+  ];
+
+  let uMVRotZ = [
+  +Math.cos(angleZ*Math.PI/180.0),+Math.sin(angleZ*Math.PI/180.0),0,0,
+  -Math.sin(angleZ*Math.PI/180.0),+Math.cos(angleZ*Math.PI/180.0),0,0,
+  0,0,1,0,
+  0,0,0,1
+  ];
+
+  let uMVRotY = [
+  +Math.cos(angleY*Math.PI/180.0),0,-Math.sin(angleY*Math.PI/180.0),0,
+  0,1,0,0,
+  +Math.sin(angleY*Math.PI/180.0),0,+Math.cos(angleY*Math.PI/180.0),0,
+  0,0,0,1
+  ];
+
+  let uMVRotX = [
+  1,0,0,0,
+  0,+Math.cos(angleX*Math.PI/180.0),+Math.sin(angleX*Math.PI/180.0),0,
+  0,-Math.sin(angleX*Math.PI/180.0),+Math.cos(angleX*Math.PI/180.0),0,
+  0,0,0,1
+  ];
+
+  let uMVTranslateZ = [
+  1,0,0,0,
+  0,1,0,0,
+  0,0,1,0,
+  tx,0,tz,1
+  ];
+ 
+  uMVMatrix = MatrixMul(uMVMatrix,uMVRotX);
+  uMVMatrix = MatrixMul(uMVMatrix,uMVRotY);
+  uMVMatrix = MatrixMul(uMVMatrix,uMVRotZ);
+
+  uMVMatrix = MatrixMul(uMVMatrix,uMVTranslateZ);
+  //alert(uPMatrix);
+  
+  //Render Scene
+  gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight); 
+  gl.clearColor(0.2,0.2,0.2,1.0); //Wyczyszczenie obrazu kolorem czerwonym
+  gl.clearDepth(1.0);             //Wyczyścienie bufora głebi najdalszym planem
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.useProgram(shaderProgram)   //Użycie przygotowanego programu shaderowego
+  
+  gl.enable(gl.DEPTH_TEST);           // Włączenie testu głębi - obiekty bliższe mają przykrywać obiekty dalsze
+  gl.depthFunc(gl.LEQUAL);            // 
+  
+  gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgram, "uPMatrix"), false, new Float32Array(uPMatrix)); //Wgranie macierzy kamery do pamięci karty graficznej
+  gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgram, "uMVMatrix"), false, new Float32Array(uMVMatrix));
+  
+  gl.enableVertexAttribArray(gl.getAttribLocation(shaderProgram, "aVertexPosition"));  //Przekazanie położenia
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexPositionBuffer);
+  gl.vertexAttribPointer(gl.getAttribLocation(shaderProgram, "aVertexPosition"), vertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+  
+  gl.enableVertexAttribArray(gl.getAttribLocation(shaderProgram, "aVertexColor"));  //Przekazanie kolorów
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexColorBuffer);
+  gl.vertexAttribPointer(gl.getAttribLocation(shaderProgram, "aVertexColor"), vertexColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+  
+  gl.enableVertexAttribArray(gl.getAttribLocation(shaderProgram, "aVertexCoords"));  //Pass the geometry
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexCoordsBuffer);
+  gl.vertexAttribPointer(gl.getAttribLocation(shaderProgram, "aVertexCoords"), vertexCoordsBuffer.itemSize, gl.FLOAT, false, 0, 0);
+  
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, textureBuffer);
+  gl.uniform1i(gl.getUniformLocation(shaderProgram, "uSampler"), 0);
+  
+  gl.drawArrays(gl.TRIANGLES, 0, vertexPositionBuffer.numItems*vertexPositionBuffer.itemSize); //Faktyczne wywołanie rendrowania
+   
+  setTimeout(Tick,100);
+}
+function handlekeydown(e)
+{
+ if(e.keyCode==87) angleX=angleX+1.0; //W
+ if(e.keyCode==83) angleX=angleX-1.0; //S
+ if(e.keyCode==68) angleY=angleY+1.0;
+ if(e.keyCode==65) angleY=angleY-1.0;
+ if(e.keyCode==81) angleZ=angleZ+1.0;
+ if(e.keyCode==69) angleZ=angleZ-1.0;
+ if(e.keyCode==73) tz=tz+0.2;//i
+ if(e.keyCode==75) tz=tz-0.2;//k
+ if(e.keyCode==74) tx=tx+0.2;//j
+ if(e.keyCode==76) tx=tx-0.2;//l
+ //alert(e.keyCode);
+ //alert(angleX);
+}
+</script>
+</head>
+<body onload="startGL()" onkeydown="handlekeydown(event)">
+<canvas id="canvas3D" width="640" height="480" style="border: solid black 1px"></canvas>
+<img id="textureImg" src="solarsystem.jpg">
+</body>
+</html>
