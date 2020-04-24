@@ -675,7 +675,7 @@ var angleY = 0.0;
 var angleX = 0.0;
 var tz = -10.0;
 var tx = 0.0;
-
+var ty = 0.0;
 function Tick()
 {  
   let uMVMatrix = [
@@ -710,14 +710,32 @@ function Tick()
   1,0,0,0,
   0,1,0,0,
   0,0,1,0,
-  tx,0,tz,1
+  0,0,tz,1
   ];
- 
-  uMVMatrix = MatrixMul(uMVMatrix,uMVRotX);
-  uMVMatrix = MatrixMul(uMVMatrix,uMVRotY);
-  uMVMatrix = MatrixMul(uMVMatrix,uMVRotZ);
-
+  
+  let uMVTranslateY = [
+  1,0,0,0,
+  0,1,0,0,
+  0,0,1,0,
+  0,ty,0,1
+  ];
+  
+  let uMVTranslateX = [
+  1,0,0,0,
+  0,1,0,0,
+  0,0,1,0,
+  tx,0,0,1
+  ];
+  
   uMVMatrix = MatrixMul(uMVMatrix,uMVTranslateZ);
+  uMVMatrix = MatrixMul(uMVMatrix,uMVRotZ);
+  uMVMatrix = MatrixMul(uMVMatrix,uMVTranslateX);
+  uMVMatrix = MatrixMul(uMVMatrix,uMVRotX);
+  uMVMatrix = MatrixMul(uMVMatrix,uMVTranslateY);
+  uMVMatrix = MatrixMul(uMVMatrix,uMVRotY);
+  
+
+  
   //alert(uPMatrix);
   
   //Render Scene
@@ -765,6 +783,8 @@ function handlekeydown(e)
  if(e.keyCode==75) tz=tz-0.2;//k
  if(e.keyCode==74) tx=tx+0.2;//j
  if(e.keyCode==76) tx=tx-0.2;//l
+ if(e.keyCode==85) ty=ty+0.2;//u
+ if(e.keyCode==79) ty=ty-0.2;//o
  //alert(e.keyCode);
  //alert(angleX);
 }
